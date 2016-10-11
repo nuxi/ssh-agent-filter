@@ -51,9 +51,8 @@ fi
 
 declare -a agent_filter_args
 
-type realpath >/dev/null 2>&1 || realpath () { readlink -f "$@"; }
-
 if [ -x "${BASH_SOURCE%/*}/ssh-agent-filter" ]; then
+	type realpath >/dev/null 2>&1 || realpath () { readlink -f "$@"; }
 	SAF=$(realpath "${BASH_SOURCE%/*}/ssh-agent-filter")
 else
 	SAF=$(which ssh-agent-filter)
