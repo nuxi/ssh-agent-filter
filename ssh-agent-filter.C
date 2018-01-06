@@ -329,6 +329,65 @@ bool confirm (string const & question) {
 	}
 }
 
+bool dissect_auth_data_ssh_cert (rfc4251::string const & data, string & request_description) try {
+	io::stream<io::array_source> datastream{data.data(), data.size()};
+	arm(datastream);
+
+	// Format specified in https://cvsweb.openbsd.org/cgi-bin/cvsweb/src/usr.bin/ssh/PROTOCOL.certkeys?annotate=1.13
+	rfc4251::string		keytype{datastream};
+	std::string		keytype_str{keytype};
+	{
+		// check for and remove suffix to get the base keytype
+		std::string const	suffix{"-cert-v01@openssh.com"};
+		if (keytype_str.length() <= suffix.length())
+			return false;
+		auto suffix_start = keytype_str.end() - suffix.length();
+		if (!std::equal(suffix.begin(), suffix.end(), suffix_start))
+			return false;
+		keytype_str.erase(suffix_start, keytype_str.end());
+	}
+	rfc4251::string		nonce{datastream};
+	std::ostringstream	key_to_be_signed{};
+	if (keytype_str == "ssh-rsa") {
+		rfc4251::string		e{datastream};
+		rfc4251::string		n{datastream};
+		key_to_be_signed << rfc4251::string{keytype_str} << e << n;
+	} else if (keytype_str == "ssh-dss") {
+		rfc4251::string		p{datastream};
+		rfc4251::string		q{datastream};
+		rfc4251::string		g{datastream};
+		rfc4251::string		y{datastream};
+		key_to_be_signed << rfc4251::string{keytype_str} << p << q << g << y;
+	} else if (keytype_str == "ecdsa-sha2-nistp256"
+			|| keytype_str == "ecdsa-sha2-nistp384"
+			|| keytype_str == "ecdsa-sha2-nistp521") {
+		rfc4251::string		curve{datastream};
+		rfc4251::string		public_key{datastream};
+		key_to_be_signed << rfc4251::string{keytype_str} << curve << public_key;
+	} else if (keytype_str == "ssh-ed25519") {
+		rfc4251::string		pk{datastream};
+		key_to_be_signed << rfc4251::string{keytype_str} << pk;
+	} else {
+		return false;
+	}
+	rfc4251::uint64		serial{datastream};
+	rfc4251::uint32		type{datastream};
+	rfc4251::string		key_id{datastream};
+	rfc4251::string		valid_principals{datastream};
+	rfc4251::uint64		valid_after{datastream};
+	rfc4251::uint64		valid_before{datastream};
+	rfc4251::string		critical_options{datastream};
+	rfc4251::string		extensions{datastream};
+	rfc4251::string		reserved{datastream};
+	rfc4251::string		signature_key{datastream};
+
+	request_description = "The request is for a certificate signature on key " + base64_encode(key_to_be_signed.str()) + ".";
+
+	return true;
+} catch (...) {
+	return false;
+}
+
 bool dissect_auth_data_ssh (rfc4251::string const & data, string & request_description) try {
 	io::stream<io::array_source> datastream{data.data(), data.size()};
 	arm(datastream);
@@ -447,6 +506,8 @@ rfc4251::string handle_request (rfc4251::string const & r) {
 					if (it != confirmed_pubkeys.end()) {
 						string request_description;
 						bool dissect_ok{false};
+						if (!dissect_ok)
+							dissect_ok = dissect_auth_data_ssh_cert(data, request_description);
 						if (!dissect_ok)
 							dissect_ok = dissect_auth_data_ssh(data, request_description);
 						if (!dissect_ok)
