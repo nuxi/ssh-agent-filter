@@ -1,0 +1,85 @@
+#!/bin/sh
+
+oneTimeSetUp () {
+	set -e
+
+	# prepare keys
+	( cd "$SHUNIT_TMPDIR"; ssh-keygen -q -t ed25519 -N '' -C key0 -f key0 )
+	( cd "$SHUNIT_TMPDIR"; ssh-keygen -q -t ed25519 -N '' -C key1 -f key1 )
+
+	# prepare agent
+	eval "$(ssh-agent)"
+
+	( cd "$SHUNIT_TMPDIR"; ssh-add key0 key1 )
+
+	# delete private keys from file system, they are in the agent now
+	( cd "$SHUNIT_TMPDIR"; rm key0 key1 )
+
+	set +e
+}
+
+oneTimeTearDown () {
+	[ -z "$SSH_AGENT_PID" ] || kill "$SSH_AGENT_PID"
+}
+
+with_saf_in_tmp () {
+	set -e
+	cd "$SHUNIT_TMPDIR"
+	unset SSH_AGENT_PID
+	eval "$(ssh-agent-filter "$@")" > /dev/null
+	trap 'kill "$SSH_AGENT_PID"' EXIT
+}
+
+produce_filtered_list () (
+	with_saf_in_tmp "$@"
+	ssh-add -L
+)
+
+test_list_filter () {
+	reference_out=$(ssh-add -L | grep ' key0$')
+
+	# sanity check: unfiltered shold be different from filtered
+	assertNotSame "$reference_out" "$(ssh-add -L)"
+
+	assertSame "$reference_out" "$(produce_filtered_list --comment key0)"
+	assertSame "$reference_out" "$(produce_filtered_list --comment-confirmed key0)"
+
+	key0_md5=$(cut -d\  -f2 "$SHUNIT_TMPDIR/key0.pub" | base64 -d | md5sum - | cut -d\  -f1)
+	assertSame "$reference_out" "$(produce_filtered_list --fingerprint "$key0_md5")"
+	assertSame "$reference_out" "$(produce_filtered_list --fingerprint-confirmed "$key0_md5")"
+
+	key0_base64=$(cut -d\  -f2 "$SHUNIT_TMPDIR/key0.pub")
+	assertSame "$reference_out" "$(produce_filtered_list --key "$key0_base64")"
+	assertSame "$reference_out" "$(produce_filtered_list --key-confirmed "$key0_base64")"
+}
+
+sign_key_with_key_filtered () (
+	key_to_be_signed="$1"
+	signing_key="$2"
+	shift 2
+	with_saf_in_tmp "$@"
+	ssh-keygen -Us "$signing_key" -I identify "$key_to_be_signed"
+)
+
+test_sign_filter () {
+	# try to sign with a key that is allowed by the filter
+	assertTrue 'sign_key_with_key_filtered key0 key1 --comment key1'
+
+	# try to sign with a key that is not allowed by the filter
+	assertFalse 'sign_key_with_key_filtered key1 key0 --comment key1'
+}
+
+test_confirmation () {
+	assertTrue 'export SSH_ASKPASS=/bin/true; sign_key_with_key_filtered key0 key1 --comment-confirmed key1'
+	assertFalse 'export SSH_ASKPASS=/bin/false; sign_key_with_key_filtered key0 key1 --comment-confirmed key1'
+
+	cat > "$SHUNIT_TMPDIR/sap" <<-EOT
+		#!/bin/sh
+		echo "\$1" > "$SHUNIT_TMPDIR/sap_out"
+		EOT
+	chmod +x "$SHUNIT_TMPDIR/sap"
+	assertTrue 'export SSH_ASKPASS="$SHUNIT_TMPDIR/sap"; sign_key_with_key_filtered key0 key1 --comment-confirmed key1'
+	assertSame "Something behind the ssh-agent-filter requested use of the key named 'key1'." "$(head -n1 "$SHUNIT_TMPDIR/sap_out")"
+}
+
+. shunit2

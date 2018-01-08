@@ -36,6 +36,9 @@ ssh-agent-filter.o: ssh-agent-filter.C rfc4251.H ssh-agent.h version.h
 rfc4251.o: rfc4251.C rfc4251.H
 rfc4251_gmp.o: rfc4251_gmp.C rfc4251.H
 
+test:
+	PATH="$$(pwd):$$PATH" ./tests
+
 version.h:
 	test ! -d .git || git describe | sed 's/^.*$$/#define SSH_AGENT_FILTER_VERSION "ssh-agent-filter \0"/' > $@
 
