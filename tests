@@ -45,7 +45,7 @@ with_saf_in_tmp () {
 	set -e
 	cd "$SHUNIT_TMPDIR"
 	unset SSH_AGENT_PID
-	eval "$(ssh-agent-filter "$@")" > /dev/null
+	eval "$($OLDPWD/ssh-agent-filter "$@")" > /dev/null
 	trap 'kill "$SSH_AGENT_PID"' EXIT
 }
 
@@ -65,6 +65,10 @@ test_list_filter () {
 	key0_md5=$(cut -d\  -f2 "$SHUNIT_TMPDIR/key0.pub" | base64 -d | md5sum - | cut -d\  -f1)
 	assertSame "by md5 fingerprint" "$reference_out" "$(produce_filtered_list --fingerprint "$key0_md5")"
 	assertSame "by md5 fingerprint, confirmed" "$reference_out" "$(produce_filtered_list --fingerprint-confirmed "$key0_md5")"
+
+	key0_native=$(ssh-keygen -l -f "$SHUNIT_TMPDIR/key0.pub" | cut -d\  -f2)
+	assertSame "$reference_out" "$(produce_filtered_list --fingerprint "$key0_native")"
+	assertSame "$reference_out" "$(produce_filtered_list --fingerprint-confirmed "$key0_native")"
 
 	key0_base64=$(cut -d\  -f2 "$SHUNIT_TMPDIR/key0.pub")
 	assertSame "by base64 encoded key" "$reference_out" "$(produce_filtered_list --key "$key0_base64")"

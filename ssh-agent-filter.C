@@ -78,6 +78,7 @@ using std::lock_guard;
 #include <sys/wait.h>
 #include <sysexits.h>
 #include <nettle/md5.h>
+#include <nettle/sha2.h>
 #include <nettle/base64.h>
 #include <nettle/base16.h>
 
@@ -90,10 +91,12 @@ using std::lock_guard;
 #endif
 
 vector<string> allowed_b64;
-vector<string> allowed_md5;
+std::set<string> allowed_md5;
+std::set<string> allowed_sha256;
 vector<string> allowed_comment;
 vector<string> confirmed_b64;
-vector<string> confirmed_md5;
+std::set<string> confirmed_md5;
+std::set<string> confirmed_sha256;
 vector<string> confirmed_comment;
 std::set<rfc4251::string> allowed_pubkeys;
 std::map<rfc4251::string, string> confirmed_pubkeys;
@@ -115,10 +118,53 @@ string md5_hex (string const & s) {
 	return {hex, sizeof(hex)};
 }
 
-string base64_encode (string const & s) {
-	char b64[BASE64_ENCODE_RAW_LENGTH(s.size())];
-	base64_encode_raw(b64, s.size(), reinterpret_cast<uint8_t const *>(s.data()));
+string base64_encode (uint8_t const * s, size_t ilen) {
+	char b64[BASE64_ENCODE_RAW_LENGTH(ilen)];
+	base64_encode_raw(b64, ilen, s);
 	return {b64, sizeof(b64)};
+}
+
+string base64_encode (string const & s) {
+	return base64_encode(reinterpret_cast<uint8_t const *>(s.data()), s.size());
+}
+
+string sha256_b64 (string const & s) {
+	struct sha256_ctx ctx;
+	sha256_init(&ctx);
+	sha256_update(&ctx, s.size(), reinterpret_cast<uint8_t const *>(s.data()));
+	uint8_t bin[SHA256_DIGEST_SIZE];
+	sha256_digest(&ctx, SHA256_DIGEST_SIZE, bin);
+	auto b64 = base64_encode(bin, SHA256_DIGEST_SIZE);
+	// remove any trailing padding like OpenSSH does
+	auto pos = b64.find_last_not_of('=');
+	b64.resize(pos + 1);
+	return b64;
+}
+
+void parse_fingerprints(vector<string> in_fp, std::set<string> & out_md5, std::set<string> & out_sha256) {
+	for (auto & s : in_fp) {
+		if (s.compare(0, strlen("SHA256:"), "SHA256:") == 0) {
+			s.erase(0, strlen("SHA256:"));
+			if (debug) clog << "fingerprint detected as sha256: " << s << endl;
+			out_sha256.emplace(std::move(s));
+		} else {
+			if (s.compare(0, strlen("MD5:"), "MD5:") == 0)
+				s.erase(0, strlen("MD5:"));
+
+			// canonicalize hex
+			for (auto it = s.begin(); it != s.end(); ) {
+				if (isxdigit(*it)) {
+					*it = tolower(*it);
+					++it;
+				} else {
+					it = s.erase(it);
+				}
+			}
+
+			if (debug) clog << "fingerprint detected as md5: " << s << endl;
+			out_md5.emplace(std::move(s));
+		}
+	}
 }
 
 void cloexec (int fd) {
@@ -189,14 +235,17 @@ int make_listen_sock () {
 }
 
 void parse_cmdline (int const argc, char const * const * const argv) {
+	vector<string> allowed_fp;
+	vector<string> confirmed_fp;
+
 	po::options_description opts{"Options"};
 	opts.add_options()
 		("all-confirmed,A",		po::bool_switch(&all_confirmed),"allow all other keys with confirmation")
 		("comment,c",			po::value(&allowed_comment),	"key specified by comment")
 		("comment-confirmed,C",		po::value(&confirmed_comment),	"key specified by comment, with confirmation")
 		("debug,d",			po::bool_switch(&debug),	"show some debug info, don't fork")
-		("fingerprint,fp,f",		po::value(&allowed_md5),	"key specified by pubkey's hex-encoded md5 fingerprint")
-		("fingerprint-confirmed,F",	po::value(&confirmed_md5),	"key specified by pubkey's hex-encoded md5 fingerprint, with confirmation")
+		("fingerprint,fp,f",		po::value(&allowed_fp),	"key specified by pubkey's fingerprint")
+		("fingerprint-confirmed,F",	po::value(&confirmed_fp),	"key specified by pubkey's fingerprint, with confirmation")
 		("help,h",			"print this help message")
 		("key,k",			po::value(&allowed_b64),	"key specified by base64-encoded pubkey")
 		("key-confirmed,K",		po::value(&confirmed_b64),	"key specified by base64-encoded pubkey, with confirmation")
@@ -224,14 +273,9 @@ void parse_cmdline (int const argc, char const * const * const argv) {
 		exit(EX_OK);
 	}
 
-	// canonicalize hashes
-	for (auto & s : allowed_md5)
-		for (auto it = s.begin(); it != s.end(); )
-			if (isxdigit(*it)) {
-				*it = tolower(*it);
-				++it;
-			} else
-				it = s.erase(it);
+	parse_fingerprints(std::move(allowed_fp), allowed_md5, allowed_sha256);
+	parse_fingerprints(std::move(confirmed_fp), confirmed_md5, confirmed_sha256);
+	if (debug) clog << endl;
 }
 
 void setup_filters () {
@@ -256,6 +300,9 @@ void setup_filters () {
 		auto md5 = md5_hex(key);
 		if (debug) clog << md5 << endl;
 		
+		auto sha256 = sha256_b64(key);
+		if (debug) clog << sha256 << endl;
+		
 		string comm(comment);
 		if (debug) clog << comm << endl;
 		
@@ -268,6 +315,10 @@ void setup_filters () {
 		if (std::count(allowed_md5.begin(), allowed_md5.end(), md5)) {
 			allow = true;
 			if (debug) clog << "key allowed by matching md5 fingerprint" << endl;
+		}
+		if (std::count(allowed_sha256.begin(), allowed_sha256.end(), sha256)) {
+			allow = true;
+			if (debug) clog << "key allowed by matching sha256 fingerprint" << endl;
 		}
 		if (std::count(allowed_comment.begin(), allowed_comment.end(), comm)) {
 			allow = true;
@@ -285,6 +336,10 @@ void setup_filters () {
 			if (std::count(confirmed_md5.begin(), confirmed_md5.end(), md5)) {
 				confirm = true;
 				if (debug) clog << "key allowed with confirmation by matching md5 fingerprint" << endl;
+			}
+			if (std::count(confirmed_sha256.begin(), confirmed_sha256.end(), sha256)) {
+				confirm = true;
+				if (debug) clog << "key allowed with confirmation by matching sha256 fingerprint" << endl;
 			}
 			if (std::count(confirmed_comment.begin(), confirmed_comment.end(), comm)) {
 				confirm = true;
