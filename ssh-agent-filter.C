@@ -567,11 +567,15 @@ void handle_client (int const sock) try {
 	if (fcntl(sock, F_SETFL, fcntl(sock, F_GETFL) & ~O_NONBLOCK))
 		throw system_error(errno, system_category(), "fcntl");
 
-	io::stream<io::file_descriptor> client{sock, io::close_handle};
-	arm(client);
+	// we could use only one streambuf and iostream but when
+	// switching from read to write an lseek call is made that
+	// fails with ESPIPE and causes an exception
+	io::stream<io::file_descriptor_source> client_in{sock, io::close_handle};
+	io::stream<io::file_descriptor_sink> client_out{sock, io::never_close_handle};
+	arm(client_out);
 	
 	for (;;)
-		client << handle_request(rfc4251::string{client}) << flush;
+		client_out << handle_request(rfc4251::string{client_in}) << flush;
 } catch (...) {
 }
 
