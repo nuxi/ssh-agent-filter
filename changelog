@@ -1,3 +1,17 @@
+commit ddea0ce92bad7e218be9ac46f76ff2c34fd43a15
+Author: Timo Weingärtner <timo@tiwe.de>
+Date:   2018-05-10 17:50:04 +0200
+
+    Partially revert "(re)unify client iostreams"
+    
+    This partially reverts commit a42c87e6a761a56ebc63cd7728fa2126b2e8805f.
+
+commit d731f74d7ccf56874953c395bcfcc93efdd70f00 (tag: 0.5)
+Author: Timo Weingärtner <timo@tiwe.de>
+Date:   2018-01-08 21:10:08 +0100
+
+    release 0.5
+
 commit 3b9460a74b51119e15e0d57dafb2e0c66326890a
 Author: Timo Weingärtner <timo@tiwe.de>
 Date:   2018-01-08 21:08:09 +0100
@@ -30,7 +44,7 @@ Date:   2016-10-11 16:42:02 +0200
 
     fixup! afssh: use realpath instead of readlink -f, with fallback
 
-commit 2f994963899ca8e039dd0aa38884693a9928e116 (tiwe/master)
+commit 2f994963899ca8e039dd0aa38884693a9928e116
 Author: Timo Weingärtner <timo@tiwe.de>
 Date:   2016-10-11 14:25:39 +0200
 
