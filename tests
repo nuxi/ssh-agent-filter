@@ -57,19 +57,18 @@ produce_filtered_list () (
 test_list_filter () {
 	reference_out=$(ssh-add -L | grep ' key0$')
 
-	# sanity check: unfiltered shold be different from filtered
-	assertNotSame "$reference_out" "$(ssh-add -L)"
+	assertNotSame "sanity check: unfiltered shold be different from filtered" "$reference_out" "$(ssh-add -L)"
 
-	assertSame "$reference_out" "$(produce_filtered_list --comment key0)"
-	assertSame "$reference_out" "$(produce_filtered_list --comment-confirmed key0)"
+	assertSame "by comment" "$reference_out" "$(produce_filtered_list --comment key0)"
+	assertSame "by comment, confirmed" "$reference_out" "$(produce_filtered_list --comment-confirmed key0)"
 
 	key0_md5=$(cut -d\  -f2 "$SHUNIT_TMPDIR/key0.pub" | base64 -d | md5sum - | cut -d\  -f1)
-	assertSame "$reference_out" "$(produce_filtered_list --fingerprint "$key0_md5")"
-	assertSame "$reference_out" "$(produce_filtered_list --fingerprint-confirmed "$key0_md5")"
+	assertSame "by md5 fingerprint" "$reference_out" "$(produce_filtered_list --fingerprint "$key0_md5")"
+	assertSame "by md5 fingerprint, confirmed" "$reference_out" "$(produce_filtered_list --fingerprint-confirmed "$key0_md5")"
 
 	key0_base64=$(cut -d\  -f2 "$SHUNIT_TMPDIR/key0.pub")
-	assertSame "$reference_out" "$(produce_filtered_list --key "$key0_base64")"
-	assertSame "$reference_out" "$(produce_filtered_list --key-confirmed "$key0_base64")"
+	assertSame "by base64 encoded key" "$reference_out" "$(produce_filtered_list --key "$key0_base64")"
+	assertSame "by base64 encoded key, confirmed" "$reference_out" "$(produce_filtered_list --key-confirmed "$key0_base64")"
 }
 
 sign_key_with_key_filtered () (
