@@ -116,12 +116,9 @@ string md5_hex (string const & s) {
 }
 
 string base64_encode (string const & s) {
-	struct base64_encode_ctx ctx;
-	base64_encode_init(&ctx);
-	char b64[BASE64_ENCODE_LENGTH(s.size())];
-	auto len = base64_encode_update(&ctx, b64, s.size(), reinterpret_cast<uint8_t const *>(s.data()));
-	len += base64_encode_final(&ctx, b64 + len);
-	return {b64, len};
+	char b64[BASE64_ENCODE_RAW_LENGTH(s.size())];
+	base64_encode_raw(b64, s.size(), reinterpret_cast<uint8_t const *>(s.data()));
+	return {b64, sizeof(b64)};
 }
 
 void cloexec (int fd) {
