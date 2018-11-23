@@ -1,3 +1,23 @@
+commit 87f2de93a6522bbcf17d1960e78641df8ecd85d3 (HEAD -> master)
+Author: Timo Weingärtner <timo@tiwe.de>
+Date:   2018-11-19 21:27:42 +0100
+
+    base64_encode: fix two-byte out-of-bounds stack write
+    
+    BASE64_ENCODE_LENGTH() calculates the encoded size without padding
+
+commit bb0c140c38ef26352ad5618ddb4aebb1e184c50d
+Author: Timo Weingärtner <timo@tiwe.de>
+Date:   2018-11-18 16:42:06 +0100
+
+    tests: describe the asserts
+
+commit cc7b883c67b78021c13df453abeb35d8d9055c35 (tag: 0.5.1, tiwe/master)
+Author: Timo Weingärtner <timo@tiwe.de>
+Date:   2018-07-18 20:42:58 +0200
+
+    release 0.5.1
+
 commit ddea0ce92bad7e218be9ac46f76ff2c34fd43a15
 Author: Timo Weingärtner <timo@tiwe.de>
 Date:   2018-05-10 17:50:04 +0200
